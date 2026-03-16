@@ -1,0 +1,43 @@
+[Unit]
+Description=vLLM Thermal Guard - GPU temperature monitoring with DCGM
+Documentation=https://github.com/NVIDIA/dcgm-exporter
+After=network-online.target dcgm-exporter.service docker.service
+Wants=network-online.target
+Requires=docker.service
+BindsTo=dcgm-exporter.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+# Environment variables (can be overridden)
+Environment=EXPORTER_URL=http://127.0.0.1:9400/metrics
+Environment=THRESHOLD_C=80
+Environment=POLL_SECONDS=5
+Environment=CONTAINER_NAME=vllm
+Environment=DOCKER_STOP_TIMEOUT=30
+
+# Ensure DCGM exporter is running before starting thermal guard
+ExecStartPre=/bin/bash -c 'timeout 10 bash -c "until curl -sf ${EXPORTER_URL} >/dev/null 2>&1; do sleep 1; done" || (echo "WARNING: DCGM exporter not responding at ${EXPORTER_URL}" >&2; exit 1)'
+
+# Execute the monitoring script
+ExecStart=/usr/local/sbin/vllm-thermal-guard.sh
+
+# Restart policy - be conservative to avoid flapping
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vllm-thermal-guard
+
+# Basic security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

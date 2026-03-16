@@ -1,0 +1,81 @@
+services:
+  vllm-server:
+    image: nvcr.io/nvidia/vllm:26.01-py3
+    container_name: vllm
+    restart: "no"
+
+    expose:
+      - "8000"
+
+    shm_size: "16g"
+
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    stop_grace_period: 2m
+
+    mem_limit: "80g"
+    memswap_limit: "80g"
+
+    gpus: all
+
+    volumes:
+      - ../../models/Devstral-2-123B-Instruct-2512:/models/Devstral-2-123B-Instruct-2512:ro
+
+    environment:
+      - VLLM_API_KEY=${VLLM_API_KEY}
+
+    command: >
+      vllm serve /models/Devstral-2-123B-Instruct-2512
+      --host 0.0.0.0
+      --port 8000
+      --async-scheduling
+      --gpu-memory-utilization 0.70
+      --max-model-len 8192
+      --max-num-batched-tokens 2048
+      --max-num-seqs 2
+      --swap-space 8
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 10m
+      retries: 60
+
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+
+    depends_on:
+      vllm-server:
+        condition: service_healthy
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    mem_limit: "512m"
+    memswap_limit: "512m"
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+

@@ -1,0 +1,17 @@
+:80 {
+    reverse_proxy vllm:8000 {
+        # flush_interval -1: disable response buffering, flush each chunk
+        # to the client immediately as vLLM streams tokens. Without this,
+        # Caddy buffers the full response causing client-side timeouts.
+        flush_interval -1
+
+        # read_timeout: how long to wait for vLLM to complete the response.
+        # Set to 20m to accommodate slow 120B model generation.
+        # write_timeout is intentionally omitted (no limit) — it was causing
+        # 504 errors at exactly 60s by acting as a total round-trip deadline.
+        transport http {
+            read_timeout 20m
+        }
+    }
+}
+

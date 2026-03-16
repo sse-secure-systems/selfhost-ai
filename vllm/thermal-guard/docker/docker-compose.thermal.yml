@@ -1,0 +1,75 @@
+# Thermal Guard System - GPU Temperature Monitoring
+# This compose file runs independently to monitor GPU temperatures
+# and protect the vllm container from thermal issues.
+#
+# Usage:
+#   Start: docker compose -f docker-compose.thermal.yml up -d
+#   Stop:  docker compose -f docker-compose.thermal.yml down
+#   Logs:  docker compose -f docker-compose.thermal.yml logs -f
+
+services:
+  # DCGM Exporter - exposes NVIDIA GPU metrics on port 9400
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter:4.5.2-4.8.1-ubuntu22.04
+    container_name: dcgm-exporter
+    restart: unless-stopped
+
+    # DCGM exporter needs access to NVIDIA GPUs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # Expose metrics port externally for monitoring/Prometheus
+    ports:
+      - "9400:9400"
+
+    networks:
+      - thermal-net
+
+    # Basic health check — uses bash /dev/tcp since curl/wget are not in this image
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9400"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Thermal Guard - monitors GPU temps and stops vllm if threshold exceeded
+  thermal-guard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    container_name: thermal-guard
+    restart: unless-stopped
+
+    depends_on:
+      dcgm-exporter:
+        condition: service_healthy
+
+    environment:
+      - EXPORTER_URL=http://dcgm-exporter:9400/metrics
+      - THRESHOLD_C=${THERMAL_THRESHOLD_C:-80}
+      - POLL_SECONDS=${THERMAL_POLL_SECONDS:-5}
+      # Name of the LLM container to stop when threshold is exceeded.
+      # Thermal-guard reaches it via the Docker socket (not network),
+      # so it works regardless of which compose stack the LLM is part of.
+      - CONTAINER_NAME=${LLM_CONTAINER_NAME:-vllm}
+      - DOCKER_STOP_TIMEOUT=30
+
+    # Mount Docker socket (rw) so the guard can stop containers on the host.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+
+    networks:
+      - thermal-net
+
+# Self-contained network — no dependency on an external LLM compose stack.
+# Thermal-guard reaches the LLM container via the Docker socket, not the network.
+networks:
+  thermal-net:
+    driver: bridge
