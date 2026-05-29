@@ -2,6 +2,8 @@
 
 A self-hosted LLM environment supporting both **Ollama** and **vLLM** deployments. The primary focus is running a vLLM inference server that exposes an **OpenAI-compatible Chat Completions API**, fronted by a Caddy reverse proxy and protected by GPU thermal monitoring.
 
+The repository ships ready-to-use compose templates for a selection of models, but is not limited to them — any model supported by vLLM can be added by following the same pattern.
+
 All services are deployed via **Docker Compose**.
 
 ---
@@ -10,9 +12,8 @@ All services are deployed via **Docker Compose**.
 
 ```text
 selfhost-ai/
-├── models/                          # Local model weights (mounted read-only into containers)
-│   └── Ministral-3-3B-Instruct-2512/
-│       └── ...                      # Download other models here before use
+├── models/                          # Model weights — one subdirectory per model,
+│                                    # mounted read-only into the vLLM container
 │
 ├── ollama/                          # Ollama + Open WebUI deployment
 │   └── docker-compose.yml
@@ -20,12 +21,7 @@ selfhost-ai/
 └── vllm/
     ├── llm-deployment/              # Per-model vLLM + Caddy Docker Compose stacks
     │   ├── Caddyfile
-    │   ├── docker-compose.Ministral-3-3B-Instruct-2512.yml
-    │   ├── docker-compose.Ministral-3-8B-Instruct-2512.yml
-    │   ├── docker-compose.Ministral-3-14B-Instruct-2512.yml
-    │   ├── docker-compose.Devstral-2-123B-Instruct-2512.yml
-    │   ├── docker-compose.gpt-oss-20B.yml
-    │   └── docker-compose.gpt-oss-120B.yml
+    │   └── docker-compose.<model-name>.yml   # one file per model
     │
     ├── llm-testing/                 # API smoke-test script
     │   └── test_llm_api.py
@@ -143,7 +139,9 @@ curl http://localhost/v1/chat/completions \
 
 > **Note for structured output (xgrammar):** Ministral models with structured output enabled can generate indefinitely without hitting a natural stop token. Always pass `max_tokens` in client API calls when using structured output.
 
-### Available Models
+### Included Model Templates
+
+The following models have ready-to-use compose files. These serve as templates — the repo is not limited to these models.
 
 | Model | Compose File | Notes |
 |-------|-------------|-------|
@@ -155,6 +153,44 @@ curl http://localhost/v1/chat/completions \
 | gpt-oss-120B | `docker-compose.gpt-oss-120B.yml` | async scheduling |
 
 Model weights must be present in the corresponding `models/<model-name>/` directory before starting the stack.
+
+### Adding a Model
+
+#### Step 1 — Download the model weights
+
+Use the Hugging Face CLI to download weights into `models/`:
+
+```bash
+pip install huggingface-hub
+huggingface-cli download <org>/<model-name> --local-dir models/<model-name>
+```
+
+The directory name under `models/` is what gets mounted into the container and passed to `vllm serve`.
+
+#### Step 2 — Create a compose file
+
+Copy the closest existing template and rename it:
+
+```bash
+cp vllm/llm-deployment/docker-compose.Ministral-3-8B-Instruct-2512.yml \
+   vllm/llm-deployment/docker-compose.<model-name>.yml
+```
+
+Edit the new file and update:
+
+- `volumes` — change the host path to `../../models/<model-name>`
+- `command` — update the model path and any model-specific vLLM flags
+  - Mistral-family models require `--tokenizer_mode mistral --config_format mistral --load_format mistral`
+  - Standard HuggingFace models do not need these flags
+- `mem_limit` / `memswap_limit` — adjust to the model's size
+- `container_name` — keep as `vllm` unless running multiple stacks simultaneously
+
+#### Step 3 — Start the stack
+
+```bash
+cd vllm/llm-deployment
+docker compose -f docker-compose.<model-name>.yml up -d
+```
 
 ---
 
