@@ -1,6 +1,6 @@
 # Self-Host AI
 
-A self-hosted LLM environment supporting both **Ollama** and **vLLM** deployments. The primary focus is running a vLLM inference server that exposes an **OpenAI-compatible Chat Completions API**, fronted by a Caddy reverse proxy and protected by GPU thermal monitoring.
+A self-hosted LLM inference server exposing an **OpenAI-compatible Chat Completions API**, fronted by a Caddy reverse proxy and protected by GPU thermal monitoring.
 
 The repository ships ready-to-use compose templates for a selection of models, but is not limited to them — any model supported by vLLM can be added by following the same pattern.
 
@@ -17,9 +17,6 @@ selfhost-ai/
 ├── Makefile                         # Root-level management commands (run make help)
 ├── models/                          # Model weights — one subdirectory per model,
 │                                    # mounted read-only into the vLLM container
-│
-├── ollama/                          # Ollama + Open WebUI deployment
-│   └── docker-compose.yml
 │
 └── vllm/
     ├── deployment-templates/        # Per-model vLLM + Caddy Docker Compose stacks
@@ -49,7 +46,6 @@ selfhost-ai/
 | Reverse proxy | `caddy:latest` |
 | GPU metrics | `nvidia/dcgm-exporter:4.5.2-4.8.1-ubuntu22.04` |
 | Thermal guard | `alpine:latest` (custom script) |
-| Ollama + WebUI | `ghcr.io/open-webui/open-webui:ollama` |
 | Orchestration | Docker Compose v2 |
 
 ---
@@ -229,21 +225,6 @@ Edit the new file and update:
 ```bash
 make deploy MODEL=<model-name>
 ```
-
----
-
-## Ollama Deployment
-
-Ollama is bundled inside the **Open WebUI** image and deployed as a single container.
-
-```bash
-cd ollama
-docker compose up -d
-```
-
-Open WebUI is accessible at `http://localhost:8080`. Manage models through the Open WebUI interface.
-
-> **Note:** Port 11434 (Ollama API) is not exposed externally in the current compose file. To use the Ollama CLI from the host, exec into the container: `docker exec -it open-webui-compose ollama ...`
 
 ---
 

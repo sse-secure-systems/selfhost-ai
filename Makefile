@@ -30,9 +30,6 @@ help: ## Show this help message
 	@echo ""
 	@echo "Thermal guard:"
 	@awk 'BEGIN {FS = ":.*?## "} /^## @thermal/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@echo ""
-	@echo "Ollama:"
-	@awk 'BEGIN {FS = ":.*?## "} /^## @ollama/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # =============================================================================
 ## @setup
@@ -98,8 +95,11 @@ deploy-qwen-27b: ## Deploy Qwen3.6-27B
 # =============================================================================
 .PHONY: test
 
-test: ## Run the API smoke test against API_BASE_URL (requires .venv and .env)
-	.venv/bin/python $(TESTING_SCRIPT)
+# Default message — override with: make test MSG="your question here"
+MESSAGE ?= Was ist die Hauptstadt von Frankreich?
+
+test: ## Run the API smoke test (optional: make test MSG="your question")
+	.venv/bin/python $(TESTING_SCRIPT) $(if $(MESSAGE),"$(MESSAGE)")
 
 # =============================================================================
 ## @thermal
@@ -141,17 +141,3 @@ thermal-metrics: ## Verify DCGM exporter is returning GPU temperature data
 	  || echo "No metrics yet — DCGM exporter may still be starting up"
 
 thermal-rebuild: thermal-down thermal-build thermal-up ## Rebuild and restart all thermal services
-
-# =============================================================================
-## @ollama
-# =============================================================================
-.PHONY: ollama-up ollama-down ollama-logs
-
-ollama-up: ## Start Ollama + Open WebUI
-	docker compose -f ollama/docker-compose.yml up -d
-
-ollama-down: ## Stop Ollama + Open WebUI
-	docker compose -f ollama/docker-compose.yml down
-
-ollama-logs: ## Follow Ollama + Open WebUI logs
-	docker compose -f ollama/docker-compose.yml logs -f
