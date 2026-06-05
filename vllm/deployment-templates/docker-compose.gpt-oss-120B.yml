@@ -23,8 +23,8 @@ services:
     volumes:
       - ../../models/gpt-oss-120b:/models/gpt-oss-120b:ro
 
-    environment:
-      - VLLM_API_KEY=${VLLM_API_KEY}
+    env_file:
+      - ../../.env
 
     command: >
       vllm serve /models/gpt-oss-120b

@@ -51,6 +51,9 @@ services:
       dcgm-exporter:
         condition: service_healthy
 
+    env_file:
+      - ../../../.env
+
     environment:
       - EXPORTER_URL=http://dcgm-exporter:9400/metrics
       - THRESHOLD_C=${THERMAL_THRESHOLD_C:-80}

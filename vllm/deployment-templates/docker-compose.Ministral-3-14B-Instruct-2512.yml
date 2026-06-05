@@ -23,8 +23,8 @@ services:
     volumes:
       - ../../models/Ministral-3-14B-Instruct-2512:/models/Ministral-3-14B-Instruct-2512:ro
 
-    environment:
-      - VLLM_API_KEY=${VLLM_API_KEY}
+    env_file:
+      - ../../.env
 
     # Source: https://huggingface.co/mistralai/Ministral-3B-Instruct-2501
     # --tokenizer_mode/--config_format/--load_format mistral: required to use
