@@ -26,14 +26,12 @@ selfhost-ai/
     ├── testing/                     # API smoke-test script
     │   └── test_llm_api.py
     │
-    ├── thermal-guard/               # GPU temperature monitoring & auto-shutdown
-    │   └── docker/                  # Docker Compose-based deployment
-    │       ├── Dockerfile
-    │       ├── docker-compose.thermal.yml
-    │       ├── thermal-guard-docker.sh
-    │       └── README-docker.md
-    │
-    └── backup-files/                # Archived / reference compose files
+    └── thermal-guard/               # GPU temperature monitoring & auto-shutdown
+        └── docker/                  # Docker Compose-based deployment
+            ├── Dockerfile
+            ├── docker-compose.thermal.yml
+            ├── thermal-guard-docker.sh
+            └── README-docker.md
 ```
 
 ---
@@ -42,7 +40,7 @@ selfhost-ai/
 
 | Component | Image / Tool |
 |-----------|-------------|
-| Inference engine | `nvcr.io/nvidia/vllm:26.01-py3` |
+| Inference engine | `nvcr.io/nvidia/vllm:26.01-py3` (Qwen3.6-27B uses `26.04-py3`) |
 | Reverse proxy | `caddy:latest` |
 | GPU metrics | `nvidia/dcgm-exporter:4.5.2-4.8.1-ubuntu22.04` |
 | Thermal guard | `alpine:latest` (custom script) |
@@ -186,6 +184,7 @@ The following models have ready-to-use compose files. These serve as templates �
 | Devstral-2-123B-Instruct-2512 | `docker-compose.Devstral-2-123B-Instruct-2512.yml` | 123B, async scheduling |
 | gpt-oss-20B | `docker-compose.gpt-oss-20B.yml` | async scheduling |
 | gpt-oss-120B | `docker-compose.gpt-oss-120B.yml` | async scheduling |
+| Qwen3.6-27B | `docker-compose.Qwen3.6-27B.yml` | 27B VLM, reasoning parser, tool calling, 131K context, requires vLLM 26.04 |
 
 Model weights must be present in the corresponding `models/<model-name>/` directory before starting the stack.
 

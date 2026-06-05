@@ -6,10 +6,10 @@ This implementation provides GPU temperature monitoring and automatic container 
 
 The system is split into two independent Docker Compose files for flexibility:
 
-1. **`docker-compose.yml`** - Main services (vllm + caddy)
+1. **`docker-compose.<model>.yml`** - Main services (vllm + caddy)
 2. **`docker-compose.thermal.yml`** - Thermal monitoring (dcgm-exporter + thermal-guard)
 
-Both share a common network (`llm_server_internal`) allowing thermal-guard to monitor and control the vllm container.
+The thermal stack runs on its own self-contained `thermal-net` network with no dependency on the LLM compose stack. Thermal-guard reaches the vLLM container via the Docker socket, not via a shared network.
 
 ## Overview
 
@@ -117,19 +117,18 @@ The thermal guard emits a log line every poll cycle:
 
 ### Exposing DCGM Metrics Externally
 
-To access DCGM metrics from outside the Docker network (e.g., for Prometheus), uncomment the ports section in `docker-compose.thermal.yml`:
+Port `9400` is already exposed in `docker-compose.thermal.yml`, making GPU metrics available at `http://localhost:9400/metrics` on the host:
 
 ```yaml
 dcgm-exporter:
-  # ...
   ports:
-    - "9400:9400"  # Expose metrics externally
+    - "9400:9400"
 ```
 
-Then restart:
+To verify metrics are flowing:
 
 ```bash
-make thermal-rebuild
+make thermal-metrics
 ```
 
 ## How It Works
@@ -209,7 +208,7 @@ scrape_configs:
 ## Security Considerations
 
 - The thermal-guard container needs access to `/var/run/docker.sock` to stop containers
-- Docker socket is mounted as read-only (`:ro`) but the container still has control capabilities
+- Docker socket is mounted as read-write (`:rw`), which is required for `docker container stop` to function
 - Consider using Docker socket proxy (e.g., tecnativa/docker-socket-proxy) for production environments
 - The thermal guard runs as root inside the container (required for docker CLI operations)
 
