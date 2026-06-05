@@ -9,35 +9,34 @@ services:
 
     shm_size: "16g"
 
-    stop_grace_period: 2m
-
     ulimits:
       memlock: -1
       stack: 67108864
 
-    mem_limit: "30g"
-    memswap_limit: "30g"
+    stop_grace_period: 2m
+
+    mem_limit: "80g"
+    memswap_limit: "80g"
 
     gpus: all
 
     volumes:
-      - ../../models/gpt-oss-20b:/models/gpt-oss-20b:ro
+      - ../../models/Devstral-2-123B-Instruct-2512:/models/Devstral-2-123B-Instruct-2512:ro
 
-    environment:
-      - VLLM_API_KEY=${VLLM_API_KEY}
+    env_file:
+      - ../../.env
 
     command: >
-      vllm serve /models/gpt-oss-20b
+      vllm serve /models/Devstral-2-123B-Instruct-2512
       --host 0.0.0.0
       --port 8000
       --async-scheduling
       --gpu-memory-utilization 0.70
-      --max-model-len 32768
+      --max-model-len 8192
       --max-num-batched-tokens 2048
-      --max-num-seqs 16
+      --max-num-seqs 2
       --swap-space 8
 
-    # Give vLLM plenty of time to load weights/compile/capture graphs before marking unhealthy.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
       interval: 15s
@@ -52,6 +51,7 @@ services:
     image: caddy:latest
     container_name: caddy
     restart: unless-stopped
+
     depends_on:
       vllm-server:
         condition: service_healthy

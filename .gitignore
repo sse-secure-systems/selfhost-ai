@@ -1,5 +1,3 @@
 models/*
-vllm/llm-deployment/.env
-vllm/llm-testing/.venv
-vllm/llm-testing/.env
-vllm/thermal-guard/docker/.env
+.env
+.venv

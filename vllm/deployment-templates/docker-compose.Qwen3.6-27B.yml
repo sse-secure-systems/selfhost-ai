@@ -1,0 +1,108 @@
+services:
+  vllm-server:
+    image: nvcr.io/nvidia/vllm:26.04-py3
+    container_name: vllm
+    restart: "no"
+
+    expose:
+      - "8000"
+
+    shm_size: "16g"
+
+    stop_grace_period: 2m
+
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    mem_limit: "70g"
+    memswap_limit: "80g"
+
+    gpus: all
+
+    volumes:
+      - ../../models/Qwen3.6-27B:/models/Qwen3.6-27B:ro
+
+    env_file:
+      - ../../.env
+
+    # Source: https://huggingface.co/Qwen/Qwen3.6-27B
+    # vllm>=0.19.0 is required for Qwen3.6.
+    #
+    # --reasoning-parser qwen3: enables thinking mode; Qwen3.6 thinks by default
+    #   before generating a response. Reasoning content appears as <think>...</think>
+    #   blocks in the output.
+    #
+    # --enable-auto-tool-choice / --tool-call-parser qwen3_coder: required for
+    #   function/tool calling support.
+    #
+    # --speculative-config: enables Multi-Token Prediction (MTP) speculative decoding
+    #   using qwen3_next_mtp, which can improve throughput. Remove if unsupported
+    #   by your vLLM build or if latency is more important than throughput.
+    #
+    # --max-model-len: native context is 262,144 tokens. Qwen/Qwen3.6-27B requires
+    #   at least 128K context to preserve thinking capabilities. Reduce to 65536 if
+    #   you hit OOM, but expect degraded reasoning on complex tasks.
+    #   Multiply GPUs via --tensor-parallel-size to unlock longer contexts.
+    #
+    # --language-model-only: skips the vision encoder and multimodal profiling to
+    #   free up GPU memory. Uncomment this flag if you only need text-only inference.
+    #
+    # Recommended sampling parameters (set per-request by the client, not here):
+    #   Thinking mode (general):  temperature=1.0, top_p=0.95, top_k=20
+    #   Thinking mode (coding):   temperature=0.6, top_p=0.95, top_k=20
+    #   Instruct/non-thinking:    temperature=0.7, top_p=0.80, top_k=20, presence_penalty=1.5
+    command: >
+      vllm serve /models/Qwen3.6-27B
+      --host 0.0.0.0
+      --port 8000
+      --async-scheduling
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --speculative-config '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'
+      --gpu-memory-utilization 0.90
+      --max-model-len 131072
+      --max-num-batched-tokens 4096
+      --max-num-seqs 16
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 10m
+      retries: 60
+
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      vllm-server:
+        condition: service_healthy
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    mem_limit: "512m"
+    memswap_limit: "512m"
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

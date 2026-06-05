@@ -1,4 +1,4 @@
-# local-llms
+# Self-Host AI
 
 A self-hosted LLM environment supporting both **Ollama** and **vLLM** deployments. The primary focus is running a vLLM inference server that exposes an **OpenAI-compatible Chat Completions API**, fronted by a Caddy reverse proxy and protected by GPU thermal monitoring.
 
@@ -12,6 +12,9 @@ All services are deployed via **Docker Compose**.
 
 ```text
 selfhost-ai/
+├── .env.example                     # Template for all env variables (copy to .env)
+├── requirements.txt                 # Python dependencies for the test client
+├── Makefile                         # Root-level management commands (run make help)
 ├── models/                          # Model weights — one subdirectory per model,
 │                                    # mounted read-only into the vLLM container
 │
@@ -19,28 +22,19 @@ selfhost-ai/
 │   └── docker-compose.yml
 │
 └── vllm/
-    ├── llm-deployment/              # Per-model vLLM + Caddy Docker Compose stacks
+    ├── deployment-templates/        # Per-model vLLM + Caddy Docker Compose stacks
     │   ├── Caddyfile
     │   └── docker-compose.<model-name>.yml   # one file per model
     │
-    ├── llm-testing/                 # API smoke-test script
+    ├── testing/                     # API smoke-test script
     │   └── test_llm_api.py
     │
     ├── thermal-guard/               # GPU temperature monitoring & auto-shutdown
-    │   ├── docker/                  # Docker Compose-based deployment (recommended)
-    │   │   ├── Dockerfile
-    │   │   ├── docker-compose.thermal.yml
-    │   │   ├── thermal-guard-docker.sh
-    │   │   ├── Makefile
-    │   │   ├── QUICKSTART.md
-    │   │   └── README-docker.md
-    │   └── systemd/                 # Alternative bare-metal deployment
-    │       ├── vllm-thermal-guard.sh
-    │       ├── vllm-thermal-guard.service
-    │       ├── dcgm-exporter.service
-    │       ├── install_dcgm_systemd.sh
-    │       ├── uninstall_dcgm_systemd.sh
-    │       └── Makefile
+    │   └── docker/                  # Docker Compose-based deployment
+    │       ├── Dockerfile
+    │       ├── docker-compose.thermal.yml
+    │       ├── thermal-guard-docker.sh
+    │       └── README-docker.md
     │
     └── backup-files/                # Archived / reference compose files
 ```
@@ -69,11 +63,53 @@ selfhost-ai/
 
 ---
 
+## Quick Start
+
+### 1. Verify GPU access
+
+```bash
+make gpu-check
+```
+
+### 2. Configure environment
+
+```bash
+make env          # copies .env.example → .env
+# Edit .env and set VLLM_API_KEY:
+#   openssl rand -hex 32
+```
+
+### 3. Deploy a model
+
+```bash
+make deploy-ministral-8b        # shortcut
+make deploy MODEL=Qwen3.6-27B   # any model by name
+```
+
+Caddy will not accept traffic until vLLM reports healthy. Allow up to **10 minutes** for large models to load.
+
+### 4. Start thermal monitoring
+
+```bash
+make thermal-up
+```
+
+### 5. Test the API
+
+```bash
+make venv    # first time only — creates .venv and installs requirements
+make test
+```
+
+Run `make help` to see all available commands.
+
+---
+
 ## vLLM Deployment (OpenAI-Compatible API)
 
 ### Overview
 
-Each model has its own Docker Compose file under `vllm/llm-deployment/`. Every stack starts two services:
+Each model has its own Docker Compose file under `vllm/deployment-templates/`. Every stack starts two services:
 
 | Service | Image | Description |
 |---------|-------|-------------|
@@ -87,7 +123,6 @@ Caddy forwards all traffic to vLLM with response streaming enabled (`flush_inter
 Create the `.env` file from the example and set your API key:
 
 ```bash
-cd vllm/llm-deployment
 cp .env.example .env
 # Edit .env and set VLLM_API_KEY
 ```
@@ -104,13 +139,15 @@ VLLM_API_KEY="your-secret-key-here"
 ### Starting a Model
 
 ```bash
-cd vllm/llm-deployment
+# Using a Makefile shortcut:
+make deploy-ministral-8b
+make deploy-devstral-123b
 
-# Example: Ministral 8B
-docker compose -f docker-compose.Ministral-3-8B-Instruct-2512.yml up -d
+# Or any model by name:
+make deploy MODEL=Qwen3.6-27B
 
-# Example: Devstral 123B
-docker compose -f docker-compose.Devstral-2-123B-Instruct-2512.yml up -d
+# Low-level equivalent:
+docker compose -f vllm/deployment-templates/docker-compose.<model-name>.yml up -d
 ```
 
 vLLM performs a health check at `GET /health` every 15 seconds with a 10-minute startup grace period. Caddy will not accept traffic until vLLM reports healthy. Allow up to **10 minutes** for large models to load.
@@ -118,7 +155,9 @@ vLLM performs a health check at `GET /health` every 15 seconds with a 10-minute 
 ### Stopping a Stack
 
 ```bash
-docker compose -f docker-compose.<model>.yml down
+make undeploy MODEL=<model-name>
+# or:
+docker compose -f vllm/deployment-templates/docker-compose.<model>.yml down
 ```
 
 ### API Usage
@@ -172,8 +211,8 @@ The directory name under `models/` is what gets mounted into the container and p
 Copy the closest existing template and rename it:
 
 ```bash
-cp vllm/llm-deployment/docker-compose.Ministral-3-8B-Instruct-2512.yml \
-   vllm/llm-deployment/docker-compose.<model-name>.yml
+cp vllm/deployment-templates/docker-compose.Ministral-3-8B-Instruct-2512.yml \
+   vllm/deployment-templates/docker-compose.<model-name>.yml
 ```
 
 Edit the new file and update:
@@ -188,8 +227,7 @@ Edit the new file and update:
 #### Step 3 — Start the stack
 
 ```bash
-cd vllm/llm-deployment
-docker compose -f docker-compose.<model-name>.yml up -d
+make deploy MODEL=<model-name>
 ```
 
 ---
@@ -232,54 +270,53 @@ The thermal guard protects GPU(s) from overheating by stopping the vLLM containe
 └──────────────────┘
 ```
 
-Two deployment options are provided:
+See [vllm/thermal-guard/docker/README-docker.md](vllm/thermal-guard/docker/README-docker.md) for full details.
 
-### Option A: Docker (Recommended)
+All thermal commands are available from the repo root via the root `Makefile`:
 
-See [vllm/thermal-guard/docker/README-docker.md](vllm/thermal-guard/docker/README-docker.md) and [vllm/thermal-guard/docker/QUICKSTART.md](vllm/thermal-guard/docker/QUICKSTART.md) for full details.
+| Command | Description |
+|---------|-------------|
+| `make thermal-up` | Start dcgm-exporter + thermal-guard |
+| `make thermal-down` | Stop thermal monitoring |
+| `make thermal-logs` | Follow all thermal service logs |
+| `make thermal-logs-guard` | Follow thermal-guard logs only |
+| `make thermal-logs-dcgm` | Follow DCGM exporter logs only |
+| `make thermal-status` | Show service status |
+| `make thermal-health` | Show health check status |
+| `make thermal-metrics` | Verify DCGM exporter is returning GPU temp data |
+| `make thermal-rebuild` | Rebuild the thermal-guard image and restart |
 
 ```bash
-cd vllm/thermal-guard/docker
-
-# Optional: set a custom threshold (default: 80°C, 5s polling)
-cat > .env << 'EOF'
-THERMAL_THRESHOLD_C=75
-THERMAL_POLL_SECONDS=5
-EOF
-
-# Start thermal monitoring (requires a vLLM stack to already be running)
-docker compose -f docker-compose.thermal.yml up -d
-
-# Stop thermal monitoring
-docker compose -f docker-compose.thermal.yml down
+# Quick reference:
+make thermal-up
+make thermal-status
+make thermal-logs-guard
+make thermal-down
 ```
 
-The Makefile provides convenience targets:
+### Troubleshooting
 
+**DCGM exporter won't start**
 ```bash
-make up              # start thermal monitoring only
-make down            # stop thermal monitoring
-make logs            # follow all thermal service logs
-make logs-thermal    # follow thermal-guard logs only
-make logs-dcgm       # follow DCGM exporter logs only
-make status          # show service status
-make health          # show health check status
-make test-metrics    # verify DCGM exporter is returning GPU temp data
-make rebuild         # rebuild the thermal-guard image and restart
+make thermal-logs-dcgm
+docker info | grep -i nvidia
 ```
 
-> **Note:** The `make up-all` target references a `../docker-compose.yml` path that does not exist in this repository layout. Start the vLLM stack and thermal guard separately using the compose files in `vllm/llm-deployment/` and `vllm/thermal-guard/docker/` respectively.
-
-### Option B: systemd
-
-For bare-metal deployments (dcgm-exporter installed directly on the host), systemd units are provided under `vllm/thermal-guard/systemd/`.
-
+**Thermal guard shows connection warnings**
 ```bash
-cd vllm/thermal-guard/systemd
-sudo make install    # installs dcgm-exporter.service + vllm-thermal-guard.service
-sudo make start      # start both services
-make logs            # follow journal output
-sudo make uninstall  # remove services
+make thermal-status     # check dcgm-exporter is healthy
+make thermal-metrics    # verify metrics endpoint is responding
+```
+
+**vLLM keeps stopping**
+```bash
+# Check current GPU temperature:
+nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+
+# Review thermal guard decisions:
+make thermal-logs-guard
+
+# If legitimate overtemp: improve cooling, reduce load, or raise THERMAL_THRESHOLD_C in .env
 ```
 
 ### Thermal Guard Environment Variables
@@ -298,20 +335,18 @@ The DCGM exporter also exposes metrics on host port `9400`, which can be scraped
 
 ## Testing the API
 
-A smoke-test script is provided under `vllm/llm-testing/`. It requires `requests` and `python-dotenv`:
+A smoke-test script is provided at [vllm/testing/test_llm_api.py](vllm/testing/test_llm_api.py). It reads `VLLM_API_KEY`, `API_BASE_URL`, and `MODEL` from the root `.env`.
 
 ```bash
-cd vllm/llm-testing
-pip install requests python-dotenv
+make venv    # first time only — creates .venv, installs requirements.txt
+make test
+```
 
-# Create .env with your connection details
-cat > .env << 'EOF'
-VLLM_API_KEY=your-secret-key-here
-API_BASE_URL=http://localhost
-MODEL=Ministral-3-8B-Instruct-2512
-EOF
-
-python test_llm_api.py
+Equivalent manual steps:
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python vllm/testing/test_llm_api.py
 ```
 
 The script sends a single chat completion request to `$API_BASE_URL/v1/chat/completions` and prints the HTTP status code and response body.
@@ -320,28 +355,28 @@ The script sends a single chat completion request to `$API_BASE_URL/v1/chat/comp
 
 ## Environment Files
 
-All `.env` files are git-ignored. Each location has a committed `.env.example` with safe defaults. On a fresh clone:
+All secrets live in a single `.env` at the repo root — git-ignored, sourced by all three stacks. On a fresh clone:
 
 ```bash
-cp vllm/llm-deployment/.env.example        vllm/llm-deployment/.env
-cp vllm/llm-testing/.env.example           vllm/llm-testing/.env
-cp vllm/thermal-guard/docker/.env.example  vllm/thermal-guard/docker/.env
+cp .env.example .env
+# Edit .env and fill in the required values
 ```
 
-Then edit each `.env` and fill in the required values:
-
-| Location | Variables |
-|----------|-----------|
-| `vllm/llm-deployment/.env` | `VLLM_API_KEY` |
-| `vllm/llm-testing/.env` | `VLLM_API_KEY`, `API_BASE_URL`, `MODEL` |
-| `vllm/thermal-guard/docker/.env` | `THERMAL_THRESHOLD_C`, `THERMAL_POLL_SECONDS`, `LLM_CONTAINER_NAME` |
+| Variable | Used by | Description |
+|----------|---------|-------------|
+| `VLLM_API_KEY` | deployment, testing | API key for the vLLM server |
+| `API_BASE_URL` | testing | Base URL of the running vLLM stack (no trailing slash) |
+| `MODEL` | testing | Model name as reported by `/v1/models` |
+| `THERMAL_THRESHOLD_C` | thermal-guard | Stop vLLM when any GPU reaches this temperature (°C) |
+| `THERMAL_POLL_SECONDS` | thermal-guard | GPU polling interval in seconds |
+| `LLM_CONTAINER_NAME` | thermal-guard | Name of the container to stop on overtemp |
 
 ---
 
 ## Security Notes
 
 - **Never commit `.env` files.** They are git-ignored.
-- Generate a strong API key: `openssl rand -hex 32`. Set the same value as `VLLM_API_KEY` in both `llm-deployment/.env` and `llm-testing/.env`.
+- Generate a strong API key: `openssl rand -hex 32`. Set `VLLM_API_KEY` in the root `.env`.
 - vLLM binds only on an internal Docker bridge network; Caddy is the sole public-facing ingress point.
 - The thermal guard container mounts the Docker socket (`/var/run/docker.sock`) to stop containers on overtemp. Restrict access to the host socket accordingly.
 
@@ -349,5 +384,4 @@ Then edit each `.env` and fill in the required values:
 
 ## Known Gaps
 
-- The `make up-all` target in `vllm/thermal-guard/docker/Makefile` references `../docker-compose.yml`, which does not exist. Start the LLM stack and thermal monitoring separately.
 - TLS (HTTPS) is not configured in the provided `Caddyfile`. To enable it, update `Caddyfile` with your domain and Caddy will obtain a certificate automatically via ACME.
