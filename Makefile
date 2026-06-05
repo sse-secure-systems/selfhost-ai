@@ -56,7 +56,7 @@ gpu-check: ## Verify GPU access (nvidia-smi + Docker runtime)
         deploy-ministral-3b deploy-ministral-8b deploy-ministral-14b \
         deploy-devstral-123b deploy-gpt-20b deploy-gpt-120b deploy-qwen-27b
 
-deploy: ## Start vLLM + Caddy for MODEL (default: Ministral-3-8B-Instruct-2512)
+deploy: ## Start vLLM + Caddy for MODEL (default: Ministral-3-3B-Instruct-2512)
 	docker compose -f $(DEPLOY_DIR)/docker-compose.$(MODEL).yml up -d
 
 undeploy: ## Stop the running vLLM stack for MODEL
