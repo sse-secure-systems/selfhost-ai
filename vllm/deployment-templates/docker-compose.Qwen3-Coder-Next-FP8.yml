@@ -1,0 +1,110 @@
+services:
+  vllm-server:
+    image: nvcr.io/nvidia/vllm:26.04-py3
+    container_name: vllm
+    restart: "no"
+
+    expose:
+      - "8000"
+
+    shm_size: "16g"
+
+    stop_grace_period: 2m
+
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    # Memory budget on DGX Spark (128 GB unified LPDDR5X):
+    #   FP8 weights:  80B params × 1 byte  ≈  80 GB
+    #   KV cache + activations            ≈  35 GB (at max-model-len 204800)
+    #   OS + Docker overhead              ≈   8 GB
+    #   ───────────────────────────────────────────
+    #   Total                             ≈ 123 GB
+    # Lower max-model-len to 32768 first if the server OOMs on startup.
+    mem_limit: "120g"
+    memswap_limit: "120g"
+
+    gpus: all
+
+    volumes:
+      - ../../models/Qwen3-Coder-Next-FP8:/models/Qwen3-Coder-Next-FP8:ro
+
+    env_file:
+      - ../../.env
+
+    # Source: https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8
+    # vllm>=0.15.0 is required for Qwen3-Coder-Next-FP8.
+    #
+    # FP8 quantization: the model ships with a quantization_config in config.json
+    # (fine-grained FP8, block size 128). vLLM reads this automatically — no
+    # --quantization flag is required.
+    #
+    # --enable-auto-tool-choice / --tool-call-parser qwen3_coder: required for
+    #   function/tool calling support.
+    #
+    # --speculative-config: enables Multi-Token Prediction (MTP) speculative
+    #   decoding using qwen3_next_mtp, which can improve throughput. Remove if
+    #   unsupported by your vLLM build or if latency is more important.
+    #
+    # Non-thinking model: Qwen3-Coder-Next does NOT generate <think></think>
+    #   blocks. --reasoning-parser is intentionally omitted.
+    #
+    # --max-model-len: 204800 (200K tokens). Native context is 262144 tokens.
+    #   200k context length is needed for coding agents as Claude Code.
+    #
+    # Recommended sampling parameters (set per-request by the client, not here):
+    #   temperature=1.0, top_p=0.95, top_k=40
+    command: >
+      vllm serve /models/Qwen3-Coder-Next-FP8
+      --host 0.0.0.0
+      --port 8000
+      --async-scheduling
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --speculative-config '{"method":"mtp","num_speculative_tokens":1}'
+      --gpu-memory-utilization 0.90
+      --max-model-len 150000
+      --max-num-batched-tokens 8192
+      --max-num-seqs 4
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 10m
+      retries: 60
+
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      vllm-server:
+        condition: service_healthy
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    mem_limit: "512m"
+    memswap_limit: "512m"
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

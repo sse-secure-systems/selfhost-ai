@@ -185,6 +185,7 @@ The following models have ready-to-use compose files. These serve as templates â
 | gpt-oss-20B | `docker-compose.gpt-oss-20B.yml` | async scheduling |
 | gpt-oss-120B | `docker-compose.gpt-oss-120B.yml` | async scheduling |
 | Qwen3.6-27B | `docker-compose.Qwen3.6-27B.yml` | 27B VLM, reasoning parser, tool calling, 131K context, requires vLLM 26.04 |
+| Qwen3-Coder-Next-FP8 | `docker-compose.Qwen3-Coder-Next-FP8.yml` | 80B MoE (3B active), FP8-quantized (~80 GB), tool calling, 256K context, no thinking mode, requires vLLM 26.04 |
 
 Model weights must be present in the corresponding `models/<model-name>/` directory before starting the stack.
 

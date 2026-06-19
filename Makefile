@@ -20,16 +20,16 @@ help: ## Show this help message
 	@echo "Usage: make [target] [MODEL=<name>]"
 	@echo ""
 	@echo "Setup:"
-	@awk 'BEGIN {FS = ":.*?## "} /^## @setup/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^## @setup/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "Model deployment:"
-	@awk 'BEGIN {FS = ":.*?## "} /^## @deploy/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^## @deploy/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "Testing:"
-	@awk 'BEGIN {FS = ":.*?## "} /^## @test/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^## @test/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "Thermal guard:"
-	@awk 'BEGIN {FS = ":.*?## "} /^## @thermal/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^## @thermal/ {p=1; next} /^## @/ {p=0} p && /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # =============================================================================
 ## @setup
@@ -54,7 +54,8 @@ gpu-check: ## Verify GPU access (nvidia-smi + Docker runtime)
 # =============================================================================
 .PHONY: deploy undeploy deploy-logs deploy-status \
         deploy-ministral-3b deploy-ministral-8b deploy-ministral-14b \
-        deploy-devstral-123b deploy-gpt-20b deploy-gpt-120b deploy-qwen-27b
+        deploy-devstral-123b deploy-gpt-20b deploy-gpt-120b deploy-qwen-27b \
+        deploy-qwen3-coder-next
 
 deploy: ## Start vLLM + Caddy for MODEL (default: Ministral-3-3B-Instruct-2512)
 	docker compose -f $(DEPLOY_DIR)/docker-compose.$(MODEL).yml up -d
@@ -89,6 +90,9 @@ deploy-gpt-120b: ## Deploy gpt-oss-120B
 
 deploy-qwen-27b: ## Deploy Qwen3.6-27B
 	$(MAKE) deploy MODEL=Qwen3.6-27B
+
+deploy-qwen3-coder-next: ## Deploy Qwen3-Coder-Next-FP8
+	$(MAKE) deploy MODEL=Qwen3-Coder-Next-FP8
 
 # =============================================================================
 ## @test
