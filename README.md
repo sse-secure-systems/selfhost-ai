@@ -40,7 +40,7 @@ selfhost-ai/
 
 | Component | Image / Tool |
 |-----------|-------------|
-| Inference engine | `nvcr.io/nvidia/vllm:26.01-py3` (Qwen3.6-27B uses `26.04-py3`) |
+| Inference engine | `nvcr.io/nvidia/vllm:26.01-py3` (Qwen3.6-27B uses `26.04-py3`; Qwen3.8 NVFP4 uses `vllm/vllm-openai:qwen38`) |
 | Reverse proxy | `caddy:latest` |
 | GPU metrics | `nvidia/dcgm-exporter:4.5.2-4.8.1-ubuntu22.04` |
 | Thermal guard | `alpine:latest` (custom script) |
@@ -186,8 +186,48 @@ The following models have ready-to-use compose files. These serve as templates â
 | gpt-oss-120B | `docker-compose.gpt-oss-120B.yml` | async scheduling |
 | Qwen3.6-27B | `docker-compose.Qwen3.6-27B.yml` | 27B VLM, reasoning parser, tool calling, 131K context, requires vLLM 26.04 |
 | Qwen3-Coder-Next-FP8 | `docker-compose.Qwen3-Coder-Next-FP8.yml` | 80B MoE (3B active), FP8-quantized (~80 GB), tool calling, 256K context, no thinking mode, requires vLLM 26.04 |
+| Qwen3.8-27B-NVFP4 | `docker-compose.Qwen3.8-27B-NVFP4.yml` | NVIDIA mixed NVFP4/FP8 checkpoint (~21.9 GB weights), single GB10, 262K context, reasoning and tool calling, dedicated `qwen38` image |
 
 Model weights must be present in the corresponding `models/<model-name>/` directory before starting the stack.
+
+### NVIDIA Qwen3.8-27B-NVFP4 on DGX Spark
+
+This template follows [NVIDIA's single-Spark recipe](https://build.nvidia.com/spark/vllm/instructions)
+for a GB10 with 128 GB unified memory. It uses one GPU, FP8 KV cache,
+262,144-token context, and up to eight concurrent sequences. The checkpoint
+contains both NVFP4 and FP8 layers; vLLM reads its quantization configuration
+automatically. Use the dedicated `vllm/vllm-openai:qwen38` image rather than
+the older NVIDIA images used by the other templates.
+The template uses the Python API frontend: in this image, the Rust frontend
+returns the checkpoint's function XML as text instead of structured tool calls.
+
+From the repo root, with the Hugging Face CLI installed:
+
+```bash
+hf download nvidia/Qwen3.8-27B-NVFP4 --local-dir models/Qwen3.8-27B-NVFP4
+make env
+# Set VLLM_API_KEY in .env before deploying.
+make deploy-qwen38-27b-nvfp4
+make deploy-logs MODEL=Qwen3.8-27B-NVFP4
+```
+
+Wait for vLLM to become healthy before using the API. Caddy exposes the model
+at `http://<host>/v1`; client requests must use
+`"model": "nvidia/Qwen3.8-27B-NVFP4"`. Authentication uses `VLLM_API_KEY`
+from the root `.env`. The provided Caddy configuration serves HTTP; public
+HTTPS requires configuring a domain as described in Known Gaps.
+
+```bash
+make venv  # first time only
+MODEL=nvidia/Qwen3.8-27B-NVFP4 make test
+make thermal-up
+
+# Stop this model:
+make undeploy MODEL=Qwen3.8-27B-NVFP4
+```
+
+The template shares the `vllm` and `caddy` container names and ingress ports
+with the other models. Stop an existing model stack before deploying it.
 
 ### Adding a Model
 
