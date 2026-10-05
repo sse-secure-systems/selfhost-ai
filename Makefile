@@ -55,7 +55,7 @@ gpu-check: ## Verify GPU access (nvidia-smi + Docker runtime)
 .PHONY: deploy undeploy deploy-logs deploy-status \
         deploy-ministral-3b deploy-ministral-8b deploy-ministral-14b \
         deploy-devstral-123b deploy-gpt-20b deploy-gpt-120b deploy-qwen-27b \
-        deploy-qwen3-coder-next
+        deploy-qwen3-coder-next deploy-qwen38-27b-nvfp4
 
 deploy: ## Start vLLM + Caddy for MODEL (default: Ministral-3-3B-Instruct-2512)
 	docker compose -f $(DEPLOY_DIR)/docker-compose.$(MODEL).yml up -d
@@ -93,6 +93,9 @@ deploy-qwen-27b: ## Deploy Qwen3.6-27B
 
 deploy-qwen3-coder-next: ## Deploy Qwen3-Coder-Next-FP8
 	$(MAKE) deploy MODEL=Qwen3-Coder-Next-FP8
+
+deploy-qwen38-27b-nvfp4: ## Deploy NVIDIA Qwen3.8-27B-NVFP4 (single GB10)
+	$(MAKE) deploy MODEL=Qwen3.8-27B-NVFP4
 
 # =============================================================================
 ## @test
